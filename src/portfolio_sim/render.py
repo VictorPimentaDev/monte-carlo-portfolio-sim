@@ -12,7 +12,7 @@ from matplotlib.animation import FFMpegWriter, FuncAnimation, writers
 from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 from matplotlib.patches import Rectangle
-from matplotlib.ticker import FuncFormatter, MaxNLocator
+from matplotlib.ticker import FixedLocator, FuncFormatter, MaxNLocator, NullLocator
 
 from .model import Simulation, summarize
 
@@ -75,13 +75,13 @@ class Chart:
         )
         self.counter = self.fig.text(
             0.955,
-            0.816 if self.vertical else 0.917,
+            0.859 if self.vertical else 0.917,
             "",
             ha="right",
             fontsize=8 if self.vertical else 9,
             **font,
         )
-        bottom, top = (0.225, 0.775) if self.vertical else (0.225, 0.785)
+        bottom, top = (0.225, 0.83) if self.vertical else (0.225, 0.785)
         self.ax = self.fig.add_axes(
             [
                 0.11 if self.vertical else 0.085,
@@ -109,15 +109,31 @@ class Chart:
             fontsize=7 if self.vertical else 8,
             **font,
         )
-        maximum = float(simulation.values.max()) * 1.055
-        self.ax.set_ylim(0, maximum)
+        minimum = float(simulation.values.min()) / 1.15
+        maximum = float(simulation.values.max()) * 1.10
+        self.ax.set_yscale("log", base=2)
+        self.ax.set_ylim(minimum, maximum)
         self.ax.set_xlim(0, config.years)
         self.ax.set_xlabel(
             "Y E A R S", color=MUTED, fontfamily="DejaVu Sans Mono", fontsize=8, labelpad=15
         )
         self.ax.xaxis.set_major_locator(MaxNLocator(5))
-        self.ax.yaxis.set_major_locator(MaxNLocator(6))
+        magnitude = 10 ** np.floor(np.log10(config.start))
+        exponents = np.arange(
+            np.floor(np.log2(minimum / magnitude)),
+            np.ceil(np.log2(maximum / magnitude)) + 1,
+        )
+        ticks = magnitude * 2.0 ** exponents[:: max(1, int(np.ceil(len(exponents) / 8)))]
+        self.ax.yaxis.set_major_locator(FixedLocator(ticks))
+        self.ax.yaxis.set_minor_locator(NullLocator())
         self.ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: money(value)))
+        self.fig.text(
+            0.11 if self.vertical else 0.085,
+            top + 0.014,
+            "LOG SCALE",
+            fontsize=6 if self.vertical else 7,
+            **{**font, "color": MUTED},
+        )
         for axis in (self.ax, self.hist):
             axis.set_facecolor(BACKGROUND)
             for spine in axis.spines.values():
@@ -140,7 +156,7 @@ class Chart:
         self.paths = LineCollection([], colors=self.colors, linewidths=0.6, alpha=0.40, zorder=2)
         self.ax.add_collection(self.paths)
         (self.median,) = self.ax.plot([], [], color=WHITE, linewidth=1.7, zorder=4)
-        self.bins = np.linspace(0, maximum, 37)
+        self.bins = np.geomspace(minimum, maximum, 37)
         centers = (self.bins[1:] + self.bins[:-1]) / 2
         self.bars = self.hist.barh(
             centers,
@@ -201,7 +217,7 @@ class Chart:
                 x,
                 0.113 if self.vertical else 0.064,
                 "",
-                fontsize=14 if self.vertical else 23,
+                fontsize=18 if self.vertical else 23,
                 weight="bold",
                 **{**font, "color": color},
             )

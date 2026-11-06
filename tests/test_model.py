@@ -78,6 +78,13 @@ def test_overflow_is_an_error_not_infinite_paths():
         simulate(Config(annual_return=1000, volatility=0, paths=1))
 
 
+@pytest.mark.parametrize("name", ["start", "years", "annual_return", "volatility"])
+@pytest.mark.parametrize("value", [True, "0.08", None, complex(1, 1)])
+def test_numeric_parameters_reject_booleans_and_nonnumbers(name, value):
+    with pytest.raises(ValueError, match="must be a real number"):
+        Config(**{name: value})
+
+
 @pytest.mark.parametrize("values", [[], [float("nan")], [0], [-1], [[1, 2]]])
 def test_invalid_sample_is_rejected(values):
     with pytest.raises(ValueError):

@@ -29,7 +29,10 @@ def test_distribution_counts_every_visible_path_and_shares_y_axis():
             count = max(1, int(np.ceil(30 * min(1, progress * 4))))
             assert sum(bar.get_width() for bar in chart.bars) == count
             assert chart.hist.get_ylim() == chart.ax.get_ylim()
+            assert chart.ax.get_yscale() == chart.hist.get_yscale() == "log"
+            assert chart.ax.get_ylim()[0] < result.values.min()
             assert chart.ax.get_ylim()[1] > result.values.max()
+            np.testing.assert_allclose(np.diff(np.log(chart.bins)), np.diff(np.log(chart.bins))[0])
         assert chart.stat_texts["loss_probability"].get_text().endswith("%")
         assert chart.counter.get_text() == "PATHS 030 / 30"
     finally:

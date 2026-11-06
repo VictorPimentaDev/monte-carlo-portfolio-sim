@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from math import ceil, erf, exp, isfinite, log, sqrt
+from numbers import Real
 from statistics import NormalDist
 
 import numpy as np
@@ -18,7 +19,14 @@ class Config:
 
     def __post_init__(self):
         for name in ("start", "years", "annual_return", "volatility"):
-            if not isfinite(getattr(self, name)):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, Real):
+                raise ValueError(f"{name} must be a real number")
+            try:
+                finite = isfinite(value)
+            except OverflowError:
+                finite = False
+            if not finite:
                 raise ValueError(f"{name} must be finite")
         if self.start <= 0 or self.years <= 0 or self.volatility < 0:
             raise ValueError("start/years must be positive and volatility nonnegative")
