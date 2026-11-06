@@ -1,7 +1,7 @@
 """Exact GBM transitions; return means annual arithmetic drift, not CAGR."""
 
 from dataclasses import dataclass
-from math import ceil, erf, exp, isfinite, log, sqrt
+from math import ceil, erfc, exp, isfinite, log, sqrt
 from numbers import Real
 from statistics import NormalDist
 
@@ -56,11 +56,15 @@ def summarize(values, start):
     if np.any(values <= 0) or not isfinite(start) or start <= 0:
         raise ValueError("values and start must be positive")
     p5, median, p95 = np.percentile(values, [5, 50, 95])
+    with np.errstate(over="ignore"):
+        mean = float(np.mean(values))
+    if not isfinite(mean):
+        mean = float(np.mean(values / values.max()) * values.max())
     return {
         "p95": float(p95),
         "median": float(median),
         "p5": float(p5),
-        "mean": float(np.mean(values)),
+        "mean": mean,
         "loss_probability": float(np.mean(values < start)),
     }
 
@@ -77,6 +81,9 @@ def simulate(config: Config = Config()) -> Simulation:
             ) * dt + config.volatility * sqrt(dt) * shocks
             log_values = np.cumsum(increments, axis=1) + log(config.start)
             values = np.column_stack((np.full(config.paths, config.start), np.exp(log_values)))
+            if config.volatility == 0:
+                # Avoid log/exp roundoff classifying a flat path as a loss.
+                values[:] = config.start * np.exp(config.annual_return * times)
     except (FloatingPointError, OverflowError) as exc:
         raise ValueError("parameters exceed the numerical range of GBM") from exc
     if not np.isfinite(values).all() or np.any(values <= 0):
@@ -86,21 +93,23 @@ def simulate(config: Config = Config()) -> Simulation:
 
 def analytical_statistics(config: Config):
     """Terminal lognormal distribution, useful for checking Monte Carlo error."""
-    location = (config.annual_return - 0.5 * config.volatility**2) * config.years
-    scale = config.volatility * sqrt(config.years)
     normal = NormalDist()
     try:
+        location = (config.annual_return - 0.5 * config.volatility**2) * config.years
+        scale = config.volatility * sqrt(config.years)
         result = {
             "p95": config.start * exp(location + scale * normal.inv_cdf(0.95)),
             "median": config.start * exp(location),
             "p5": config.start * exp(location + scale * normal.inv_cdf(0.05)),
             "mean": config.start * exp(config.annual_return * config.years),
             "loss_probability": (
-                0.5 * (1 + erf(-location / scale / sqrt(2))) if scale else float(location < 0)
+                0.5 * erfc(location / scale / sqrt(2)) if scale else float(location < 0)
             ),
         }
     except OverflowError as exc:
         raise ValueError("parameters exceed the numerical range of GBM") from exc
-    if any(not isfinite(value) for value in result.values()):
+    if any(not isfinite(value) for value in result.values()) or any(
+        result[key] <= 0 for key in ("p95", "median", "p5", "mean")
+    ):
         raise ValueError("analytical statistics exceed the numerical range of GBM")
     return result
