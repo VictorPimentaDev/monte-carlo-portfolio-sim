@@ -13,8 +13,8 @@ Optional B3 calibration; fully offline examples and tests.
 ![Final frame: logarithmic portfolio values, white median, and horizontal distribution](assets/simulation-wide.png)
 
 Queria um gráfico que mostrasse o que uma média esconde. O resultado é este: 320 trajetórias,
-uma mediana branca e uma distribuição que acompanha o tempo. Cada caminho mantém sua cor,
-definida pelo valor final: coral, laranja, verde, teal, azul e roxo.
+uma mediana branca, as bordas P5 e P95 e uma distribuição que acompanha o tempo. Cada caminho
+mantém sua cor, definida pelo valor final: coral, laranja, amarelo, verde, teal, azul e roxo.
 
 **Uso educacional. Não é recomendação de investimento.** As imagens acima usam premissas
 ilustrativas, não projeções de WEGE3, IBOV ou qualquer carteira real.
@@ -45,8 +45,9 @@ portfolio-sim --start 50000 --years 5 --return 0.06 --vol 0.25 --seed 7 --layout
 ```
 
 MP4 e GIF exigem [ffmpeg](https://ffmpeg.org/download.html): `brew install ffmpeg` no macOS,
-ou `sudo apt-get install ffmpeg` no Ubuntu. Ambos são renderizados por `matplotlib.animation`;
-o GIF usa uma paleta de 128 cores via ffmpeg para controlar memória e tamanho.
+ou `sudo apt-get install ffmpeg` no Ubuntu. Ambos são renderizados quadro a quadro por
+`matplotlib.animation`, a partir dos mesmos dados do PNG. O MP4 sai em 1080p; o GIF sai em 720p,
+com paleta de 256 cores gerada via ffmpeg sobre um intermediário sem perdas.
 
 | Flag | Padrão | Significado |
 | --- | --- | --- |
@@ -103,8 +104,12 @@ P5/P95 são percentis de desfechos do modelo, não um intervalo de confiança da
   multiplicadores iguais; não incrementos iguais em dinheiro. Nenhuma cauda é cortada.
 - O histograma compartilha o eixo vertical e usa intervalos geométricos. Sua largura representa
   **contagem por intervalo**, não densidade por dólar; ela é normalizada visualmente a cada frame.
-- A cor depende do valor terminal, com a mediana no centro da paleta. É informação retrospectiva
-  para leitura, não um sinal disponível antes do futuro acontecer.
+- A cor depende do valor terminal em escala log: a mediana fica no centro da paleta e os extremos
+  da amostra nas pontas. É informação retrospectiva para leitura, não um sinal disponível antes
+  do futuro acontecer.
+- As linhas P95, mediana e P5 são percentis calculados a cada mês sobre os caminhos visíveis;
+  nenhuma delas é uma trajetória individual. No início da animação, com o leque ainda estreito,
+  os rótulos se afastam para continuar legíveis. As linhas e guias mantêm o valor exato.
 - `PATHS n / 320` informa quantos caminhos já foram revelados. Durante a animação, mediana,
   histograma e rodapé usam somente os caminhos visíveis naquele instante.
 - `$` é uma unidade monetária genérica no visual. Não há conversão cambial; a calibração em B3
@@ -183,12 +188,13 @@ export_png(result, "output/portfolio.png", layout="wide")
 
 | Layout | PNG | MP4 | GIF |
 | --- | --- | --- | --- |
-| 16:9 · 1280 × 720 | [Imagem](assets/simulation-wide.png) | [Vídeo](assets/simulation-wide.mp4) | [Animação](assets/simulation-wide.gif) |
-| 9:16 · 720 × 1280 | [Imagem](assets/simulation-vertical.png) | [Vídeo](assets/simulation-vertical.mp4) | [Animação](assets/simulation-vertical.gif) |
+| 16:9 | [1280 × 720](assets/simulation-wide.png) | [1920 × 1080](assets/simulation-wide.mp4) | [1280 × 720](assets/simulation-wide.gif) |
+| 9:16 | [720 × 1280](assets/simulation-vertical.png) | [1080 × 1920](assets/simulation-vertical.mp4) | [720 × 1280](assets/simulation-vertical.gif) |
 
-Ambos os vídeos têm 8 segundos e 15 fps. Os GIFs preservam as dimensões; o formato quantiza a duração
-dos frames para centésimos de segundo. `python scripts/verify_assets.py` verifica tamanho,
-duração e dimensões dos arquivos. Para reconstruir a imagem social original de 1280 × 640:
+Ambos os vídeos têm 8 segundos, 15 fps, H.264 e cor marcada como BT.709. No 9:16, as faixas de
+cima e de baixo ficam vazias de propósito, para a interface do reel não cobrir o rodapé. O formato
+GIF quantiza a duração dos frames para centésimos de segundo. `python scripts/verify_assets.py`
+verifica tamanho, duração, dimensões e marcação de cor dos arquivos. Para reconstruir a imagem social original de 1280 × 640:
 `python scripts/social_preview.py`. [Social preview](assets/social-preview.png) pronto para
 ativar nas configurações do GitHub após a publicação.
 
@@ -204,6 +210,7 @@ pytest -q
 CI executa Ruff e pytest em Python 3.11/3.13 sem buscar preços. O smoke MP4/GIF tem skip explícito
 quando ffmpeg não existe; um job separado instala ffmpeg e roda a codificação real.
 Testes cobrem seed, positividade, retorno determinístico, momentos/quantis analíticos,
-calibração, dados ruins, escala log, histogramas, CLI, PNG e animações.
+calibração, dados ruins, escala log, histogramas, CLI, PNG e animações, além de legibilidade
+dos rótulos em cenários extremos e determinismo pixel a pixel do quadro renderizado.
 
 Ideias e correções são bem-vindas; veja [CONTRIBUTING.md](CONTRIBUTING.md). Licença [MIT](LICENSE).
