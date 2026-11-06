@@ -27,6 +27,57 @@ def test_zero_volatility_is_exact_exponential_growth():
         assert result.statistics[key] == pytest.approx(value)
 
 
+@pytest.mark.parametrize("start", [0.1, 1_000, 100_000])
+def test_flat_paths_do_not_turn_roundoff_into_losses(start):
+    config = Config(start=start, annual_return=0, volatility=0, paths=3)
+    result = simulate(config)
+    np.testing.assert_array_equal(result.values, np.full(result.values.shape, start))
+    assert result.statistics == pytest.approx(analytical_statistics(config))
+    assert result.statistics["loss_probability"] == 0
+
+
+def test_analytical_loss_retains_small_nonzero_tail_probability():
+    config = Config(years=1, annual_return=1.005, volatility=0.1)
+    assert analytical_statistics(config)["loss_probability"] == pytest.approx(
+        7.61985302416047e-24, rel=1e-12, abs=0
+    )
+
+
+@pytest.mark.parametrize(
+    "change", [{"annual_return": -1000, "volatility": 0}, {"volatility": 1e200}]
+)
+def test_analytical_range_failures_are_value_errors(change):
+    with pytest.raises(ValueError, match="numerical range"):
+        analytical_statistics(Config(**change))
+
+
+def test_summary_mean_does_not_overflow_for_finite_large_values():
+    assert summarize([1e308, 1e308], 1e308)["mean"] == 1e308
+
+
+def test_seeded_transitions_match_closed_form_on_fractional_grid():
+    config = Config(years=1.1, paths=4, seed=7)
+    result = simulate(config)
+    dt = config.years / (len(result.times) - 1)
+    shocks = np.random.default_rng(config.seed).standard_normal((4, len(result.times) - 1))
+    brownian = np.cumsum(shocks * np.sqrt(dt), axis=1)
+    expected = config.start * np.exp(
+        (config.annual_return - config.volatility**2 / 2) * result.times[1:]
+        + config.volatility * brownian
+    )
+    np.testing.assert_allclose(result.values[:, 1:], expected, rtol=1e-13)
+    np.testing.assert_allclose(np.diff(result.times), dt)
+
+
+def test_simulation_does_not_use_global_random_state(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("simulation must use its own Generator")
+
+    monkeypatch.setattr(np.random, "seed", forbidden)
+    monkeypatch.setattr(np.random, "standard_normal", forbidden)
+    simulate(Config(paths=2))
+
+
 def test_summary_uses_empirical_percentiles_and_strict_loss():
     values = np.array([50, 75, 100, 125, 200])
     assert summarize(values, 100) == {
