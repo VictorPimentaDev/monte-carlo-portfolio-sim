@@ -20,16 +20,33 @@ BACKGROUND = "#07070b"
 WHITE = "#f1f1f4"
 MUTED = "#858591"
 SPECTRUM = LinearSegmentedColormap.from_list(
-    "outcomes", ["#e66b85", "#efa16a", "#e8d86b", "#8ecb8d", "#40c5bc", "#459cda", "#9260cf"]
+    "outcomes",
+    [
+        "#e0607e",
+        "#ec8674",
+        "#f2ab60",
+        "#ecce62",
+        "#a6d17c",
+        "#4fc6ac",
+        "#3fa9d6",
+        "#5a80da",
+        "#8a5fd4",
+    ],
 )
 SIZES = {"wide": (1280, 720), "vertical": (720, 1280)}
+MP4_DPI = 150  # 1920×1080 and 1080×1920; GIF and PNG stay at the 100 dpi base size.
+BINS = 30
 
 
 def money(value):
-    if value >= 1_000_000:
-        return f"${value / 1_000_000:.2f}M"
+    if value >= 999_500_000:
+        return f"${value / 1e9:,.3g}B"
+    if value >= 999_500:
+        return f"${value / 1e6:.3g}M"
+    if value >= 9_950:
+        return f"${value / 1e3:.0f}K"
     if value >= 1_000:
-        return f"${value / 1_000:,.0f}K"
+        return f"${value / 1e3:.1f}K"
     return f"${value:,.0f}"
 
 
@@ -46,7 +63,7 @@ class Chart:
         self.font = font
         self.fig.text(
             0.105,
-            0.925 if self.vertical else 0.91,
+            0.885 if self.vertical else 0.91,
             "MONTE CARLO SIMULATION",
             fontsize=16 if self.vertical else 20,
             weight="bold",
@@ -55,7 +72,7 @@ class Chart:
         for index, color in enumerate(SPECTRUM(np.linspace(0, 1, 7))):
             self.fig.add_artist(
                 Rectangle(
-                    (0.055 + index * 0.0052, 0.926 if self.vertical else 0.911),
+                    (0.055 + index * 0.0052, 0.886 if self.vertical else 0.911),
                     0.0035,
                     0.014 if self.vertical else 0.024,
                     transform=self.fig.transFigure,
@@ -63,25 +80,25 @@ class Chart:
                     linewidth=0,
                 )
             )
-        subtitle = f"PORTFOLIO VALUE · {money(config.start)} START · {config.years:g} YEARS"
-        parameters = f"RETURN {config.annual_return:.1%} · VOL {config.volatility:.1%}"
         self.fig.text(
             0.055,
-            0.884 if self.vertical else 0.862,
-            subtitle + ("\n" if self.vertical else " · ") + parameters,
+            0.858 if self.vertical else 0.862,
+            f"PORTFOLIO VALUE · {money(config.start)} START · {config.years:g} YEAR"
+            f"{'' if config.years == 1 else 'S'}"
+            f" · RETURN {config.annual_return * 100:.3g}% · VOL {config.volatility * 100:.3g}%",
             fontsize=8 if self.vertical else 9,
-            linespacing=2,
             **{**font, "color": MUTED},
         )
         self.counter = self.fig.text(
             0.955,
-            0.859 if self.vertical else 0.917,
+            0.889 if self.vertical else 0.917,
             "",
             ha="right",
             fontsize=8 if self.vertical else 9,
             **font,
         )
-        bottom, top = (0.225, 0.83) if self.vertical else (0.225, 0.785)
+        # Vertical keeps the top 11% and bottom 15% clear of reel UI overlays.
+        bottom, top = (0.29, 0.815) if self.vertical else (0.225, 0.785)
         self.ax = self.fig.add_axes(
             [
                 0.11 if self.vertical else 0.085,
@@ -90,11 +107,12 @@ class Chart:
                 top - bottom,
             ]
         )
+        hist_left = 0.74 if self.vertical else 0.73
         self.hist = self.fig.add_axes(
-            [0.755, bottom, 0.20 if self.vertical else 0.19, top - bottom], sharey=self.ax
+            [hist_left, bottom, 0.955 - hist_left, top - bottom], sharey=self.ax
         )
         self.fig.text(
-            0.755,
+            hist_left,
             top + 0.014,
             "DISTRIBUTION",
             fontsize=7 if self.vertical else 8,
@@ -107,6 +125,7 @@ class Chart:
             "",
             ha="right",
             fontsize=7 if self.vertical else 8,
+            bbox={"boxstyle": "round,pad=0.35", "facecolor": "#22222b", "edgecolor": "none"},
             **font,
         )
         minimum = float(simulation.values.min()) / 1.15
@@ -119,12 +138,12 @@ class Chart:
         )
         self.ax.xaxis.set_major_locator(MaxNLocator(5))
         magnitude = 10 ** np.floor(np.log10(config.start))
-        exponents = np.arange(
-            np.floor(np.log2(minimum / magnitude)),
-            np.ceil(np.log2(maximum / magnitude)) + 1,
-        )
-        ticks = magnitude * 2.0 ** exponents[:: max(1, int(np.ceil(len(exponents) / 8)))]
-        self.ax.yaxis.set_major_locator(FixedLocator(ticks))
+        low, high = np.log2([minimum / magnitude, maximum / magnitude])
+        step = max(1, int(np.ceil((high - low) / 8)))
+        while (high - low) / step < 2:  # A narrow fan still needs a readable scale.
+            step /= 2
+        exponents = np.arange(np.ceil(low / step), np.floor(high / step) + 1) * step
+        self.ax.yaxis.set_major_locator(FixedLocator(magnitude * 2.0**exponents))
         self.ax.yaxis.set_minor_locator(NullLocator())
         self.ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: money(value)))
         self.fig.text(
@@ -138,7 +157,9 @@ class Chart:
             axis.set_facecolor(BACKGROUND)
             for spine in axis.spines.values():
                 spine.set_visible(False)
-            axis.tick_params(colors=MUTED, labelsize=7, length=0, pad=9)
+            axis.tick_params(
+                colors=MUTED, labelsize=7, length=0, pad=9, labelfontfamily="DejaVu Sans Mono"
+            )
         self.ax.spines["left"].set_visible(True)
         self.ax.spines["bottom"].set_visible(True)
         self.ax.spines["left"].set_color("#373740")
@@ -146,34 +167,48 @@ class Chart:
         self.hist.tick_params(axis="y", labelleft=False)
         self.hist.set_xticks([])
         self.ax.grid(axis="y", color="#17171e", linewidth=0.6, alpha=0.7)
-        final_median = float(np.median(simulation.values[:, -1]))
-        self.normalizer = TwoSlopeNorm(
-            vmin=0,
-            vcenter=final_median,
-            vmax=max(float(simulation.values[:, -1].max()), final_median * 1.01),
+        # Log-space, so the lognormal tails reach both ends with the median at the center.
+        final = np.log(simulation.values[:, -1])
+        center = float(np.median(final))
+        normalizer = TwoSlopeNorm(
+            vmin=min(float(final.min()), center - 0.05),
+            vcenter=center,
+            vmax=max(float(final.max()), center + 0.05),
         )
-        self.colors = SPECTRUM(self.normalizer(simulation.values[:, -1]))
-        self.paths = LineCollection([], colors=self.colors, linewidths=0.6, alpha=0.40, zorder=2)
+        self.color_of = lambda value: SPECTRUM(normalizer(np.log(value)))
+        self.colors = self.color_of(simulation.values[:, -1])
+        self.paths = LineCollection([], colors=self.colors, linewidths=0.7, alpha=0.5, zorder=2)
         self.ax.add_collection(self.paths)
-        (self.median,) = self.ax.plot([], [], color=WHITE, linewidth=1.7, zorder=4)
-        self.bins = np.geomspace(minimum, maximum, 37)
-        centers = (self.bins[1:] + self.bins[:-1]) / 2
+        self.bins = np.geomspace(minimum, maximum, BINS + 1)
+        centers = np.sqrt(self.bins[1:] * self.bins[:-1])
         self.bars = self.hist.barh(
             centers,
-            np.zeros(36),
+            np.zeros(BINS),
             height=np.diff(self.bins) * 0.84,
-            color=SPECTRUM(self.normalizer(centers)),
+            color=self.color_of(centers),
             alpha=0.95,
         )
         self.labels = {}
         self.guides = {}
+        self.lines = {}
         for key, name, color in (
             ("p95", "P95", "#59c9bd"),
             ("median", "MEDIAN", WHITE),
             ("p5", "P5", "#ec9b7c"),
         ):
+            (self.lines[key],) = self.ax.plot(
+                [],
+                [],
+                color=color,
+                linewidth=1.8 if key == "median" else 1.2,
+                marker="o",
+                markersize=4,
+                markevery=[-1],
+                clip_on=False,
+                zorder=4 if key == "median" else 3,
+            )
             self.labels[key] = self.ax.text(
-                1.024,
+                1.03,
                 0,
                 name,
                 transform=self.ax.get_yaxis_transform(),
@@ -205,27 +240,41 @@ class Chart:
                 ("loss_probability", "LOSS PROB.", "#e66b85"),
             ]
         ):
-            x = 0.055 + index * 0.185
-            self.fig.text(
+            x = 0.14 + index * 0.18
+            caption = self.fig.text(
                 x,
-                0.142 if self.vertical else 0.109,
-                "• " + label,
-                fontsize=6 if self.vertical else 8,
+                0.215 if self.vertical else 0.109,
+                label,
+                ha="center",
+                fontsize=6.5 if self.vertical else 8,
                 **{**font, "color": MUTED},
+            )
+            self.ax.annotate(
+                "●",
+                xy=(0, 0.5),
+                xycoords=caption,
+                xytext=(-4, 0),
+                textcoords="offset points",
+                ha="right",
+                va="center",
+                color=color,
+                fontsize=4 if self.vertical else 5,
+                annotation_clip=False,
             )
             self.stat_texts[key] = self.fig.text(
                 x,
-                0.113 if self.vertical else 0.064,
+                0.18 if self.vertical else 0.058,
                 "",
-                fontsize=18 if self.vertical else 23,
+                ha="center",
+                fontsize=20 if self.vertical else 24,
                 weight="bold",
-                **{**font, "color": color},
+                **{**font, "color": color, "fontfamily": "DejaVu Sans"},
             )
         self.fig.text(
             0.055,
-            0.057 if self.vertical else 0.017,
+            0.155 if self.vertical else 0.017,
             f"GBM · MONTHLY · SEED {config.seed} · {source.upper()}",
-            fontsize=5.5 if self.vertical else 6.5,
+            fontsize=6 if self.vertical else 6.5,
             **{**font, "color": MUTED},
         )
         self.update(1)
@@ -240,14 +289,24 @@ class Chart:
         segments = np.stack((np.broadcast_to(times, values.shape), values), axis=-1)
         self.paths.set_segments(segments)
         self.paths.set_color(self.colors[:count])
-        self.median.set_data(times, np.median(values, axis=0))
+        percentiles = np.percentile(values, [95, 50, 5], axis=0)
+        for line, series in zip(self.lines.values(), percentiles, strict=True):
+            line.set_data(times, series)
         stats = summarize(values[:, -1], simulation.config.start)
         counts, _ = np.histogram(values[:, -1], bins=self.bins)
         self.hist.set_xlim(0, max(1, counts.max()) * 1.05)
         for bar, count_in_bin in zip(self.bars, counts, strict=True):
             bar.set_width(count_in_bin)
+        # Pills separate when the fan is still narrow; lines and guides keep the exact values.
+        low, high = self.ax.get_ylim()
+        gap = (high / low) ** (0.035 if self.vertical else 0.06)
+        pills = {
+            "p95": max(stats["p95"], stats["median"] * gap),
+            "median": stats["median"],
+            "p5": min(stats["p5"], stats["median"] / gap),
+        }
         for key in self.labels:
-            self.labels[key].set_y(stats[key])
+            self.labels[key].set_y(pills[key])
             self.labels[key].set_visible(step > 0)
             self.guides[key].set_ydata([stats[key], stats[key]])
         for key, label in self.stat_texts.items():
@@ -288,22 +347,43 @@ def export_animation(
         raise ValueError("ffmpeg is required for MP4/GIF; install it or choose --formats png")
     path.parent.mkdir(parents=True, exist_ok=True)
     chart = Chart(simulation, layout, source)
+    is_gif = path.suffix.lower() == ".gif"
     frames = max(2, round(seconds * fps))
     progress = np.minimum(1, np.linspace(0, 1 / 0.85, frames))
     animation = FuncAnimation(
         chart.fig, chart.update, frames=progress, interval=1000 / fps, blit=False, repeat=False
     )
-    writer = FFMpegWriter(
-        fps=fps,
-        codec="libx264",
-        bitrate=2400,
-        extra_args=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+    # GIF: lossless intermediate, so the palette sees the real colors. MP4: tagged BT.709,
+    # otherwise HD players decode untagged BT.601 pixels with shifted hues.
+    writer = (
+        FFMpegWriter(fps=fps, codec="png")
+        if is_gif
+        else FFMpegWriter(
+            fps=fps,
+            codec="libx264",
+            extra_args=[
+                "-vf",
+                "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p",
+                "-colorspace",
+                "bt709",
+                "-color_primaries",
+                "bt709",
+                "-color_trc",
+                "bt709",
+                "-crf",
+                "20",
+                "-preset",
+                "slow",
+                "-movflags",
+                "+faststart",
+            ],
+        )
     )
     try:
         with TemporaryDirectory(prefix="portfolio-sim-") as temporary:
-            video = path if path.suffix.lower() == ".mp4" else Path(temporary) / "animation.mp4"
-            animation.save(video, writer=writer, dpi=100)
-            if path.suffix.lower() == ".gif":
+            video = Path(temporary) / "animation.mkv" if is_gif else path
+            animation.save(video, writer=writer, dpi=100 if is_gif else MP4_DPI)
+            if is_gif:
                 subprocess.run(
                     [
                         writer.bin_path(),
@@ -313,7 +393,7 @@ def export_animation(
                         "-i",
                         str(video),
                         "-filter_complex",
-                        "[0:v]split[a][b];[a]palettegen=max_colors=128[p];"
+                        "[0:v]split[a][b];[a]palettegen=max_colors=256[p];"
                         "[b][p]paletteuse=dither=bayer:bayer_scale=3",
                         "-loop",
                         "0",
