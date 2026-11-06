@@ -1,0 +1,29 @@
+{
+  "config": {
+    "start": 100000,
+    "years": 10,
+    "annual_return": 0.08,
+    "volatility": 0.17,
+    "paths": 320,
+    "seed": 42
+  },
+  "empirical": {
+    "p95": 544478.0683776848,
+    "median": 197648.9081206625,
+    "p5": 83177.44246516853,
+    "mean": 234606.76553699598,
+    "loss_probability": 0.1125
+  },
+  "analytical": {
+    "p95": 466343.48056754994,
+    "median": 192610.53293179776,
+    "p5": 79552.55930911929,
+    "mean": 222554.09284924678,
+    "loss_probability": 0.11135814353473789
+  },
+  "provenance": {
+    "kind": "illustrative_assumptions",
+    "source": "user-supplied GBM parameters"
+  },
+  "model": "exact GBM; monthly grid; nominal values; no contributions, taxes or fees"
+}
